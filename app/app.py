@@ -171,7 +171,7 @@ def get_weather_indicator(station_id, month, day):
     return jsonify(result)
 
 # Nouvel endpoint : GET /map
-@app.route('/map', methods=['GET'])
+@app.route('/', methods=['GET'])
 def show_map():
     # Convertir les données des stations en une liste de dictionnaires
     stations = gdf[["station_id", "name", "province", "latitude", "longitude"]].to_dict('records')

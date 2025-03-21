@@ -2,3 +2,4 @@ flask==2.3.3
 requests==2.31.0
 beautifulsoup4==4.12.2
 geopandas==0.10.2
+fiona==1.8.20
