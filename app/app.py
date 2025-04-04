@@ -3,6 +3,7 @@ import geopandas as gpd
 import sqlite3
 import os
 import pandas as pd
+import json
 from flask import Flask, jsonify, request, render_template
 from shapely.geometry import Point
 from datetime import datetime
@@ -11,18 +12,31 @@ from config import (
     STATIONS_GEOJSON_PATH, HISTORICAL_MAX_TEMP_AVG, HISTORICAL_MIN_TEMP_AVG,
     WEATHER_REQUESTS_DB
 )
+from weather_api import fetch_weather_data
 
 app = Flask(__name__)
 
 # Fonction pour récupérer les stations et générer stations.geojson
 def fetch_stations_to_geopandas():
-    response = requests.get(STATIONS_API_BASE_URL, params=STATIONS_API_DEFAULT_PARAMS, headers=DEFAULT_API_HEADERS)
+    # Créer une clé unique pour la requête (ici, l'URL complète avec paramètres)
+    params = STATIONS_API_DEFAULT_PARAMS.copy()
+    request_key = f"{STATIONS_API_BASE_URL}?{ '&'.join(f'{k}={v}' for k, v in sorted(params.items())) }"
     
-    if response.status_code != 200:
-        print(f"Erreur lors de la requête : {response.status_code}")
-        return None
+    # Vérifier si la réponse est dans le cache
+    cached_response = get_cached_response(request_key)
+    if cached_response:
+        print("Données récupérées depuis le cache pour fetch_stations_to_geopandas")
+        data = cached_response
+    else:
+        # Faire la requête à l'API
+        response = requests.get(STATIONS_API_BASE_URL, params=params, headers=DEFAULT_API_HEADERS)
+        if response.status_code != 200:
+            print(f"Erreur lors de la requête : {response.status_code}")
+            return None
+        data = response.json()
+        # Stocker la réponse dans le cache
+        cache_response(request_key, data)
 
-    data = response.json()
     if data.get("type") != "FeatureCollection":
         print("Les données ne sont pas une FeatureCollection")
         return None
@@ -67,9 +81,32 @@ else:
 def init_db():
     conn = sqlite3.connect(WEATHER_REQUESTS_DB)
     c = conn.cursor()
+    # Table pour stocker les requêtes API génériques
+    c.execute('''CREATE TABLE IF NOT EXISTS api_requests
+                 (request_key TEXT PRIMARY KEY, response_data TEXT, request_time TEXT)''')
+    # Table existante pour les requêtes spécifiques à /station/indicator
     c.execute('''CREATE TABLE IF NOT EXISTS weather_requests
                  (station_id TEXT, month INTEGER, day INTEGER, request_time TEXT, data TEXT,
                   PRIMARY KEY (station_id, month, day))''')
+    conn.commit()
+    conn.close()
+
+# Vérifier si une requête est dans le cache
+def get_cached_response(request_key):
+    conn = sqlite3.connect(WEATHER_REQUESTS_DB)
+    c = conn.cursor()
+    c.execute("SELECT response_data FROM api_requests WHERE request_key = ?", (request_key,))
+    result = c.fetchone()
+    conn.close()
+    return json.loads(result[0]) if result else None
+
+# Stocker une réponse dans le cache
+def cache_response(request_key, response_data):
+    conn = sqlite3.connect(WEATHER_REQUESTS_DB)
+    c = conn.cursor()
+    request_time = datetime.utcnow().isoformat()
+    c.execute("INSERT OR REPLACE INTO api_requests (request_key, response_data, request_time) VALUES (?, ?, ?)",
+              (request_key, json.dumps(response_data), request_time))
     conn.commit()
     conn.close()
 
@@ -136,6 +173,16 @@ def get_nearby_stations():
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid latitude or longitude"}), 400
 
+    # Créer une clé unique pour la requête
+    request_key = f"/stations/near?lat={lat}&lon={lon}"
+
+    # Vérifier si la réponse est dans le cache
+    cached_response = get_cached_response(request_key)
+    if cached_response:
+        print(f"Données récupérées depuis le cache pour {request_key}")
+        return jsonify(cached_response)
+
+    # Si pas dans le cache, calculer les stations les plus proches
     gdf_copy = gdf.copy()
     gdf_copy['distance_km'] = gdf.apply(
         lambda row: calculate_distance(lat, lon, row['latitude'], row['longitude']),
@@ -144,6 +191,10 @@ def get_nearby_stations():
 
     nearest_stations = gdf_copy.sort_values(by='distance_km').head(5)
     result = nearest_stations[["station_id", "name", "province", "latitude", "longitude", "distance_km"]].to_dict('records')
+
+    # Stocker le résultat dans le cache
+    cache_response(request_key, result)
+
     return jsonify(result)
 
 # Endpoint 3 : GET /station/indicator/<station_id>/<month>/<day>
@@ -152,6 +203,7 @@ def get_weather_indicator(station_id, month, day):
     if station_id not in gdf['station_id'].values:
         return jsonify({"error": "Station not found"}), 404
 
+    # Vérifier d'abord la table weather_requests (cache spécifique à cet endpoint)
     conn = sqlite3.connect(WEATHER_REQUESTS_DB)
     c = conn.cursor()
     c.execute("SELECT data FROM weather_requests WHERE station_id = ? AND month = ? AND day = ?",
@@ -159,20 +211,28 @@ def get_weather_indicator(station_id, month, day):
     cached_data = c.fetchone()
     if cached_data:
         conn.close()
+        print(f"Données récupérées depuis weather_requests pour station_id={station_id}, month={month}, day={day}")
         return jsonify({"source": "cache", "data": eval(cached_data[0])})
 
-    url = (f"https://api.weather.gc.ca/collections/ltce-temperature/items?"
-           f"LOCAL_MONTH={month.zfill(2)}&LOCAL_DAY={day.zfill(2)}&VIRTUAL_CLIMATE_ID={station_id}"
-           f"&sortby=VIRTUAL_CLIMATE_ID,LOCAL_MONTH,LOCAL_DAY&f=json&limit=10000&offset=0")
-    
-    response = requests.get(url, headers=DEFAULT_API_HEADERS)
-    if response.status_code != 200:
-        conn.close()
-        return jsonify({"error": "Failed to fetch weather data"}), 500
+    # Créer une clé unique pour la requête API
+    request_key = f"/station/indicator/{station_id}/{month}/{day}"
 
-    data = response.json()
+    # Vérifier si la réponse API est dans le cache générique
+    cached_response = get_cached_response(request_key)
+    if cached_response:
+        print(f"Données récupérées depuis api_requests pour {request_key}")
+        data = cached_response
+    else:
+        # Faire la requête à l'API en utilisant fetch_weather_data
+        data = fetch_weather_data(station_id, month, day)
+        if data is None:
+            conn.close()
+            return jsonify({"error": "Failed to fetch weather data"}), 500
+        # Stocker la réponse dans le cache générique
+        cache_response(request_key, data)
+
+    # Extraire les extrêmes et calculer la tendance
     features = data.get("features", [])
-
     max_temp = None
     min_temp = None
     for feature in features:
@@ -191,6 +251,7 @@ def get_weather_indicator(station_id, month, day):
     if min_temp is not None:
         trend["min_temperature"] = "progression" if min_temp > HISTORICAL_MIN_TEMP_AVG else "regression"
 
+    # Stocker dans la table weather_requests
     request_time = datetime.utcnow().isoformat()
     c.execute("INSERT OR REPLACE INTO weather_requests (station_id, month, day, request_time, data) VALUES (?, ?, ?, ?, ?)",
               (station_id, int(month), int(day), request_time, str(data)))
