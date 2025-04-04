@@ -79,11 +79,53 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 
 init_db()
 
-# Endpoint 1 : GET /stations
+# Endpoint 1 : GET /stations (with pagination)
 @app.route('/stations', methods=['GET'])
 def get_stations():
+    # Get pagination parameters from query string
+    try:
+        page = int(request.args.get('page', 1))  # Default to page 1
+        per_page = int(request.args.get('per_page', 10))  # Default to 10 stations per page
+    except ValueError:
+        return jsonify({"error": "Invalid page or per_page parameter, must be integers"}), 400
+
+    # Ensure page and per_page are positive
+    if page < 1:
+        return jsonify({"error": "Page number must be 1 or greater"}), 400
+    if per_page < 1:
+        return jsonify({"error": "per_page must be 1 or greater"}), 400
+
+    # Convert GeoDataFrame to list of dictionaries
     stations = gdf[["station_id", "name", "province", "element", "latitude", "longitude"]].to_dict('records')
-    return jsonify(stations)
+
+    # Calculate pagination details
+    total_stations = len(stations)
+    total_pages = (total_stations + per_page - 1) // per_page  # Ceiling division
+
+    # Check if page is out of range
+    if page > total_pages and total_stations > 0:
+        return jsonify({"error": f"Page {page} exceeds total pages ({total_pages})"}), 400
+
+    # Calculate start and end indices for slicing
+    start = (page - 1) * per_page
+    end = start + per_page
+
+    # Slice the stations list for the current page
+    paginated_stations = stations[start:end]
+
+    # Prepare response with pagination metadata
+    response = {
+        "stations": paginated_stations,
+        "pagination": {
+            "current_page": page,
+            "per_page": per_page,
+            "total_stations": total_stations,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_previous": page > 1
+        }
+    }
+    return jsonify(response)
 
 # Endpoint 2 : GET /stations/near
 @app.route('/stations/near', methods=['GET'])
