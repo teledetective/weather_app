@@ -2,50 +2,57 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Weather Stations Map</title>
-    <!-- Inclure les CSS de Leaflet -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte des stations météorologiques</title>
+    <!-- Inclure les styles de Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        #map { height: 600px; width: 100%; }
+        #map {
+            height: 600px;
+            width: 100%;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        h1 {
+            text-align: center;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
-    <h1>Weather Stations Map</h1>
+    <h1>Carte des stations météorologiques</h1>
     <div id="map"></div>
 
-    <!-- Inclure les scripts de Leaflet -->
+    <!-- Inclure Leaflet.js -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Initialiser la carte centrée sur le Canada (approximatif)
-        var map = L.map('map').setView([56.13, -106.35], 4);
+        // Initialiser la carte
+        var map = L.map('map').setView([45.5017, -73.5673], 5); // Centré sur Montréal, zoom 5
 
         // Ajouter une couche de tuiles OpenStreetMap
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Récupérer les données des stations passées par Flask
+        // Données des stations passées par Flask
         var stations = {{ stations | tojson }};
 
         // Ajouter des marqueurs pour chaque station
         stations.forEach(function(station) {
-            var lat = station.latitude;
-            var lon = station.longitude;
-            var name = station.name;
-            var stationId = station.station_id;
-            var province = station.province;
-
-            // Créer un marqueur
-            var marker = L.marker([lat, lon]).addTo(map);
-
-            // Ajouter une popup avec les informations de la station
-            marker.bindPopup(
-                `<b>${name}</b><br>` +
-                `Station ID: ${stationId}<br>` +
-                `Province: ${province}<br>` +
-                `Latitude: ${lat}<br>` +
-                `Longitude: ${lon}`
-            );
+            var marker = L.marker([station.latitude, station.longitude]).addTo(map);
+            // Créer le contenu du popup avec les informations de la station
+            var popupContent = `
+                <b>Station ID:</b> ${station.station_id}<br>
+                <b>Nom:</b> ${station.name}<br>
+                <b>Province:</b> ${station.province}<br>
+                <b>Élément:</b> ${station.element}<br>
+                <b>Latitude:</b> ${station.latitude}<br>
+                <b>Longitude:</b> ${station.longitude}
+            `;
+            marker.bindPopup(popupContent);
         });
     </script>
 </body>

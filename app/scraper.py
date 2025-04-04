@@ -1,10 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
 from database import init_db, insert_station
+from app.config import SCRAPER_URL
 
 def scrape_stations():
-    url = "https://changements-climatiques.canada.ca/donnees-climatiques/#/records-climatiques-quotidiens"
-    response = requests.get(url)
+    response = requests.get(SCRAPER_URL)
     soup = BeautifulSoup(response.content, 'html.parser')
 
     # Hypothétique : à adapter selon la structure réelle du site

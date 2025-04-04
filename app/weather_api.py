@@ -1,8 +1,15 @@
 import requests
+from config import WEATHER_API_BASE_URL, WEATHER_API_DEFAULT_PARAMS
 
 def fetch_weather_data(station_id, month, day):
-    url = (f"https://api.weather.gc.ca/collections/ltce-temperature/items?"
-           f"LOCAL_MONTH={month}&LOCAL_DAY={day}&VIRTUAL_CLIMATE_ID={station_id}"
-           f"&sortby=VIRTUAL_CLIMATE_ID,LOCAL_MONTH,LOCAL_DAY&f=json&limit=10000&offset=0")
-    response = requests.get(url)
+    # Construct query parameters
+    params = WEATHER_API_DEFAULT_PARAMS.copy()
+    params.update({
+        "LOCAL_MONTH": str(month).zfill(2),
+        "LOCAL_DAY": str(day).zfill(2),
+        "VIRTUAL_CLIMATE_ID": station_id
+    })
+    
+    # Make the API request
+    response = requests.get(WEATHER_API_BASE_URL, params=params)
     return response.json() if response.status_code == 200 else None
