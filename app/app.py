@@ -6,17 +6,17 @@ import pandas as pd
 from flask import Flask, jsonify, request, render_template
 from shapely.geometry import Point
 from datetime import datetime
+from config import (
+    STATIONS_API_BASE_URL, STATIONS_API_DEFAULT_PARAMS, DEFAULT_API_HEADERS,
+    STATIONS_GEOJSON_PATH, HISTORICAL_MAX_TEMP_AVG, HISTORICAL_MIN_TEMP_AVG,
+    WEATHER_REQUESTS_DB
+)
 
 app = Flask(__name__)
 
 # Fonction pour récupérer les stations et générer stations.geojson
-# Fonction pour récupérer les stations et générer stations.geojson
 def fetch_stations_to_geopandas():
-    API_URL = "https://api.weather.gc.ca/collections/ltce-stations/items?f=json&limit=30000&properties=PROVINCE_CODE,VIRTUAL_STATION_NAME_E,VIRTUAL_CLIMATE_ID,ELEMENT_NAME_E&ELEMENT_NAME_E=TEMPERATURE"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    response = requests.get(API_URL, headers=headers)
+    response = requests.get(STATIONS_API_BASE_URL, params=STATIONS_API_DEFAULT_PARAMS, headers=DEFAULT_API_HEADERS)
     
     if response.status_code != 200:
         print(f"Erreur lors de la requête : {response.status_code}")
@@ -50,22 +50,22 @@ def fetch_stations_to_geopandas():
 
     df = pd.DataFrame(stations_data)
     gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326")
-    gdf.to_file("data/stations.geojson", driver="GeoJSON")  # Updated path here
+    os.makedirs(os.path.dirname(STATIONS_GEOJSON_PATH), exist_ok=True)  # Ensure data directory exists
+    gdf.to_file(STATIONS_GEOJSON_PATH, driver="GeoJSON")
     return gdf
 
 # Charger les données géospatiales
-STATIONS_GEOJSON = "data/stations.geojson"  # Updated path here
-if not os.path.exists(STATIONS_GEOJSON):
-    print(f"Le fichier {STATIONS_GEOJSON} n'existe pas. Récupération des données...")
+if not os.path.exists(STATIONS_GEOJSON_PATH):
+    print(f"Le fichier {STATIONS_GEOJSON_PATH} n'existe pas. Récupération des données...")
     gdf = fetch_stations_to_geopandas()
     if gdf is None:
         raise RuntimeError("Impossible de récupérer les données des stations.")
 else:
-    gdf = gpd.read_file(STATIONS_GEOJSON)
+    gdf = gpd.read_file(STATIONS_GEOJSON_PATH)
 
 # Initialiser la base de données SQLite
 def init_db():
-    conn = sqlite3.connect("weather_requests.db")
+    conn = sqlite3.connect(WEATHER_REQUESTS_DB)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS weather_requests
                  (station_id TEXT, month INTEGER, day INTEGER, request_time TEXT, data TEXT,
@@ -110,7 +110,7 @@ def get_weather_indicator(station_id, month, day):
     if station_id not in gdf['station_id'].values:
         return jsonify({"error": "Station not found"}), 404
 
-    conn = sqlite3.connect("weather_requests.db")
+    conn = sqlite3.connect(WEATHER_REQUESTS_DB)
     c = conn.cursor()
     c.execute("SELECT data FROM weather_requests WHERE station_id = ? AND month = ? AND day = ?",
               (station_id, int(month), int(day)))
@@ -123,10 +123,7 @@ def get_weather_indicator(station_id, month, day):
            f"LOCAL_MONTH={month.zfill(2)}&LOCAL_DAY={day.zfill(2)}&VIRTUAL_CLIMATE_ID={station_id}"
            f"&sortby=VIRTUAL_CLIMATE_ID,LOCAL_MONTH,LOCAL_DAY&f=json&limit=10000&offset=0")
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=DEFAULT_API_HEADERS)
     if response.status_code != 200:
         conn.close()
         return jsonify({"error": "Failed to fetch weather data"}), 500
@@ -146,13 +143,11 @@ def get_weather_indicator(station_id, month, day):
             elif "MIN" in element_name:
                 min_temp = float(value)
 
-    historical_max_avg = 20.0
-    historical_min_avg = 10.0
     trend = {}
     if max_temp is not None:
-        trend["max_temperature"] = "progression" if max_temp > historical_max_avg else "regression"
+        trend["max_temperature"] = "progression" if max_temp > HISTORICAL_MAX_TEMP_AVG else "regression"
     if min_temp is not None:
-        trend["min_temperature"] = "progression" if min_temp > historical_min_avg else "regression"
+        trend["min_temperature"] = "progression" if min_temp > HISTORICAL_MIN_TEMP_AVG else "regression"
 
     request_time = datetime.utcnow().isoformat()
     c.execute("INSERT OR REPLACE INTO weather_requests (station_id, month, day, request_time, data) VALUES (?, ?, ?, ?, ?)",
@@ -174,7 +169,6 @@ def get_weather_indicator(station_id, month, day):
 # Nouvel endpoint : GET /map
 @app.route('/', methods=['GET'])
 def show_map():
-    # Convertir les données des stations en une liste de dictionnaires
     stations = gdf[["station_id", "name", "province", "latitude", "longitude"]].to_dict('records')
     return render_template('map.html', stations=stations)
 
