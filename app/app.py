@@ -10,6 +10,7 @@ from datetime import datetime
 app = Flask(__name__)
 
 # Fonction pour récupérer les stations et générer stations.geojson
+# Fonction pour récupérer les stations et générer stations.geojson
 def fetch_stations_to_geopandas():
     API_URL = "https://api.weather.gc.ca/collections/ltce-stations/items?f=json&limit=30000&properties=PROVINCE_CODE,VIRTUAL_STATION_NAME_E,VIRTUAL_CLIMATE_ID,ELEMENT_NAME_E&ELEMENT_NAME_E=TEMPERATURE"
     headers = {
@@ -49,11 +50,11 @@ def fetch_stations_to_geopandas():
 
     df = pd.DataFrame(stations_data)
     gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326")
-    gdf.to_file("stations.geojson", driver="GeoJSON")
+    gdf.to_file("data/stations.geojson", driver="GeoJSON")  # Updated path here
     return gdf
 
 # Charger les données géospatiales
-STATIONS_GEOJSON = "stations.geojson"
+STATIONS_GEOJSON = "data/stations.geojson"  # Updated path here
 if not os.path.exists(STATIONS_GEOJSON):
     print(f"Le fichier {STATIONS_GEOJSON} n'existe pas. Récupération des données...")
     gdf = fetch_stations_to_geopandas()
