@@ -1,38 +1,55 @@
 import sqlite3
-from app.config import WEATHER_DB_PATH
+
+# Chemin de la base de données SQLite
+WEATHER_DB_PATH = "data/weather.db"
 
 def init_db():
-    conn = sqlite3.connect(WEATHER_DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS stations 
-                 (id TEXT PRIMARY KEY, latitude REAL, longitude REAL)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS weather_data 
-                 (station_id TEXT, month INTEGER, day INTEGER, data TEXT, 
-                 FOREIGN KEY(station_id) REFERENCES stations(id))''')
-    conn.commit()
-    conn.close()
+    """Crée la table 'weather_data' pour le cache des requêtes."""
+    try:
+        print("Initialisation de la base de données SQLite...")
+        conn = sqlite3.connect(WEATHER_DB_PATH)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS weather_data 
+                     (cache_key TEXT PRIMARY KEY, data TEXT)''')
+        conn.commit()
+        print("Base de données initialisée avec succès.")
+    except sqlite3.Error as e:
+        print(f"Erreur lors de l'initialisation de la base de données : {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
 
-def insert_station(station_id, latitude, longitude):
-    conn = sqlite3.connect(WEATHER_DB_PATH)
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO stations (id, latitude, longitude) VALUES (?, ?, ?)", 
-              (station_id, latitude, longitude))
-    conn.commit()
-    conn.close()
+def insert_weather_data(station_id, month, day, data, key=None):
+    """Stocke les données dans la base avec une clé unique."""
+    cache_key = key if key else f"{station_id}_{month}_{day}"
+    conn = None
+    try:
+        conn = sqlite3.connect(WEATHER_DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO weather_data (cache_key, data) VALUES (?, ?)", 
+                  (cache_key, data))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Erreur lors de l'insertion des données : {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
 
-def insert_weather_data(station_id, month, day, data):
-    conn = sqlite3.connect(WEATHER_DB_PATH)
-    c = conn.cursor()
-    c.execute("INSERT INTO weather_data (station_id, month, day, data) VALUES (?, ?, ?, ?)", 
-              (station_id, month, day, data))
-    conn.commit()
-    conn.close()
-
-def get_weather_data(station_id, month, day):
-    conn = sqlite3.connect(WEATHER_DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT data FROM weather_data WHERE station_id=? AND month=? AND day=?", 
-              (station_id, month, day))
-    result = c.fetchone()
-    conn.close()
-    return result[0] if result else None
+def get_weather_data(station_id, month, day, key=None):
+    """Récupère les données depuis le cache avec une clé unique."""
+    cache_key = key if key else f"{station_id}_{month}_{day}"
+    conn = None
+    try:
+        conn = sqlite3.connect(WEATHER_DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT data FROM weather_data WHERE cache_key=?", (cache_key,))
+        result = c.fetchone()
+        return result[0] if result else None
+    except sqlite3.Error as e:
+        print(f"Erreur lors de la récupération des données : {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()

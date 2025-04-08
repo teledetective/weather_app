@@ -1,279 +1,105 @@
-import requests
 import geopandas as gpd
-import sqlite3
+import requests
 import os
-import pandas as pd
-import json
-from flask import Flask, jsonify, request, render_template
-from shapely.geometry import Point
-from datetime import datetime
-from config import (
-    STATIONS_API_BASE_URL, STATIONS_API_DEFAULT_PARAMS, DEFAULT_API_HEADERS,
-    STATIONS_GEOJSON_PATH, HISTORICAL_MAX_TEMP_AVG, HISTORICAL_MIN_TEMP_AVG,
-    WEATHER_REQUESTS_DB
-)
-from weather_api import fetch_weather_data
+from flask import Flask, jsonify, render_template, request
+from database import get_weather_data, init_db, insert_weather_data
+from weather_api import fetch_weather_data, fetch_recent_snow_data, fetch_recent_temperatures
+from config import STATIONS_GEOJSON, PAGINATION_LIMIT
 
 app = Flask(__name__)
 
-# Fonction pour récupérer les stations et générer stations.geojson
-def fetch_stations_to_geopandas():
-    # Créer une clé unique pour la requête (ici, l'URL complète avec paramètres)
-    params = STATIONS_API_DEFAULT_PARAMS.copy()
-    request_key = f"{STATIONS_API_BASE_URL}?{ '&'.join(f'{k}={v}' for k, v in sorted(params.items())) }"
-    
-    # Vérifier si la réponse est dans le cache
-    cached_response = get_cached_response(request_key)
-    if cached_response:
-        print("Données récupérées depuis le cache pour fetch_stations_to_geopandas")
-        data = cached_response
-    else:
-        # Faire la requête à l'API
-        response = requests.get(STATIONS_API_BASE_URL, params=params, headers=DEFAULT_API_HEADERS)
-        if response.status_code != 200:
-            print(f"Erreur lors de la requête : {response.status_code}")
-            return None
-        data = response.json()
-        # Stocker la réponse dans le cache
-        cache_response(request_key, data)
-
-    if data.get("type") != "FeatureCollection":
-        print("Les données ne sont pas une FeatureCollection")
-        return None
-
-    features = data.get("features", [])
-    stations_data = []
-
-    for feature in features:
-        geometry = feature.get("geometry", {})
-        properties = feature.get("properties", {})
-        if geometry.get("type") == "Point":
-            coordinates = geometry.get("coordinates", [])
-            if len(coordinates) == 2:
-                longitude, latitude = coordinates
-                station = {
-                    "station_id": properties.get("VIRTUAL_CLIMATE_ID"),
-                    "name": properties.get("VIRTUAL_STATION_NAME_E"),
-                    "province": properties.get("PROVINCE_CODE"),
-                    "element": properties.get("ELEMENT_NAME_E"),
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "geometry": Point(longitude, latitude)
-                }
-                stations_data.append(station)
-
-    df = pd.DataFrame(stations_data)
-    gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326")
-    os.makedirs(os.path.dirname(STATIONS_GEOJSON_PATH), exist_ok=True)  # Ensure data directory exists
-    gdf.to_file(STATIONS_GEOJSON_PATH, driver="GeoJSON")
-    return gdf
-
-# Charger les données géospatiales
-if not os.path.exists(STATIONS_GEOJSON_PATH):
-    print(f"Le fichier {STATIONS_GEOJSON_PATH} n'existe pas. Récupération des données...")
-    gdf = fetch_stations_to_geopandas()
-    if gdf is None:
-        raise RuntimeError("Impossible de récupérer les données des stations.")
-else:
-    gdf = gpd.read_file(STATIONS_GEOJSON_PATH)
-
-# Initialiser la base de données SQLite
-def init_db():
-    conn = sqlite3.connect(WEATHER_REQUESTS_DB)
-    c = conn.cursor()
-    # Table pour stocker les requêtes API génériques
-    c.execute('''CREATE TABLE IF NOT EXISTS api_requests
-                 (request_key TEXT PRIMARY KEY, response_data TEXT, request_time TEXT)''')
-    # Table existante pour les requêtes spécifiques à /station/indicator
-    c.execute('''CREATE TABLE IF NOT EXISTS weather_requests
-                 (station_id TEXT, month INTEGER, day INTEGER, request_time TEXT, data TEXT,
-                  PRIMARY KEY (station_id, month, day))''')
-    conn.commit()
-    conn.close()
-
-# Vérifier si une requête est dans le cache
-def get_cached_response(request_key):
-    conn = sqlite3.connect(WEATHER_REQUESTS_DB)
-    c = conn.cursor()
-    c.execute("SELECT response_data FROM api_requests WHERE request_key = ?", (request_key,))
-    result = c.fetchone()
-    conn.close()
-    return json.loads(result[0]) if result else None
-
-# Stocker une réponse dans le cache
-def cache_response(request_key, response_data):
-    conn = sqlite3.connect(WEATHER_REQUESTS_DB)
-    c = conn.cursor()
-    request_time = datetime.utcnow().isoformat()
-    c.execute("INSERT OR REPLACE INTO api_requests (request_key, response_data, request_time) VALUES (?, ?, ?)",
-              (request_key, json.dumps(response_data), request_time))
-    conn.commit()
-    conn.close()
-
-# Fonction pour calculer la distance (approximation simple en kilomètres)
-def calculate_distance(lat1, lon1, lat2, lon2):
-    return ((lat2 - lat1) ** 2 + (lon2 - lon1) ** 2) ** 0.5 * 111  # 1 degré ≈ 111 km
-
+print("Démarrage de l'application Flask...")
 init_db()
 
-# Endpoint 1 : GET /stations (with pagination)
-@app.route('/stations', methods=['GET'])
-def get_stations():
-    # Get pagination parameters from query string
+def load_stations_from_geojson():
+    """Charge les stations directement depuis le fichier GeoJSON."""
     try:
-        page = int(request.args.get('page', 1))  # Default to page 1
-        per_page = int(request.args.get('per_page', 10))  # Default to 10 stations per page
-    except ValueError:
-        return jsonify({"error": "Invalid page or per_page parameter, must be integers"}), 400
+        print(f"Tentative de lecture de {STATIONS_GEOJSON}")
+        if not os.path.exists(STATIONS_GEOJSON):
+            raise FileNotFoundError(f"Le fichier {STATIONS_GEOJSON} n'existe pas")
+        gdf = gpd.read_file(STATIONS_GEOJSON)
+        print(f"Colonnes disponibles dans le GeoDataFrame : {list(gdf.columns)}")
+        
+        # Vérifier que la colonne 'station_id' existe
+        if 'station_id' not in gdf.columns:
+            raise KeyError(f"La colonne 'station_id' n'est pas présente dans {STATIONS_GEOJSON}")
+        
+        # Utiliser un dictionnaire pour éliminer les doublons (basé sur station_id)
+        stations_dict = {}
+        for _, row in gdf.iterrows():
+            station_id = row['station_id']
+            if station_id not in stations_dict:
+                stations_dict[station_id] = {
+                    'id': station_id,  
+                    'lat': row['geometry'].y,
+                    'lon': row['geometry'].x
+                }
+        
+        stations = list(stations_dict.values())
+        print(f"Chargé {len(stations)} stations uniques depuis {STATIONS_GEOJSON}")
+        return stations
+    except FileNotFoundError as e:
+        print(f"Erreur : {e}")
+        raise
+    except Exception as e:
+        print(f"Erreur lors du chargement de {STATIONS_GEOJSON} : {type(e).__name__} - {e}")
+        raise
 
-    # Ensure page and per_page are positive
-    if page < 1:
-        return jsonify({"error": "Page number must be 1 or greater"}), 400
-    if per_page < 1:
-        return jsonify({"error": "per_page must be 1 or greater"}), 400
-
-    # Convert GeoDataFrame to list of dictionaries
-    stations = gdf[["station_id", "name", "province", "element", "latitude", "longitude"]].to_dict('records')
-
-    # Calculate pagination details
-    total_stations = len(stations)
-    total_pages = (total_stations + per_page - 1) // per_page  # Ceiling division
-
-    # Check if page is out of range
-    if page > total_pages and total_stations > 0:
-        return jsonify({"error": f"Page {page} exceeds total pages ({total_pages})"}), 400
-
-    # Calculate start and end indices for slicing
-    start = (page - 1) * per_page
-    end = start + per_page
-
-    # Slice the stations list for the current page
-    paginated_stations = stations[start:end]
-
-    # Prepare response with pagination metadata
-    response = {
-        "stations": paginated_stations,
-        "pagination": {
-            "current_page": page,
-            "per_page": per_page,
-            "total_stations": total_stations,
-            "total_pages": total_pages,
-            "has_next": page < total_pages,
-            "has_previous": page > 1
-        }
-    }
-    return jsonify(response)
-
-# Endpoint 2 : GET /stations/near
-@app.route('/stations/near', methods=['GET'])
-def get_nearby_stations():
-    try:
-        lat = float(request.args.get('lat'))
-        lon = float(request.args.get('lon'))
-    except (TypeError, ValueError):
-        return jsonify({"error": "Invalid latitude or longitude"}), 400
-
-    # Créer une clé unique pour la requête
-    request_key = f"/stations/near?lat={lat}&lon={lon}"
-
-    # Vérifier si la réponse est dans le cache
-    cached_response = get_cached_response(request_key)
-    if cached_response:
-        print(f"Données récupérées depuis le cache pour {request_key}")
-        return jsonify(cached_response)
-
-    # Si pas dans le cache, calculer les stations les plus proches
-    gdf_copy = gdf.copy()
-    gdf_copy['distance_km'] = gdf.apply(
-        lambda row: calculate_distance(lat, lon, row['latitude'], row['longitude']),
-        axis=1
-    )
-
-    nearest_stations = gdf_copy.sort_values(by='distance_km').head(5)
-    result = nearest_stations[["station_id", "name", "province", "latitude", "longitude", "distance_km"]].to_dict('records')
-
-    # Stocker le résultat dans le cache
-    cache_response(request_key, result)
-
-    return jsonify(result)
-
-# Endpoint 3 : GET /station/indicator/<station_id>/<month>/<day>
-@app.route('/station/indicator/<station_id>/<month>/<day>', methods=['GET'])
-def get_weather_indicator(station_id, month, day):
-    if station_id not in gdf['station_id'].values:
-        return jsonify({"error": "Station not found"}), 404
-
-    # Vérifier d'abord la table weather_requests (cache spécifique à cet endpoint)
-    conn = sqlite3.connect(WEATHER_REQUESTS_DB)
-    c = conn.cursor()
-    c.execute("SELECT data FROM weather_requests WHERE station_id = ? AND month = ? AND day = ?",
-              (station_id, int(month), int(day)))
-    cached_data = c.fetchone()
-    if cached_data:
-        conn.close()
-        print(f"Données récupérées depuis weather_requests pour station_id={station_id}, month={month}, day={day}")
-        return jsonify({"source": "cache", "data": eval(cached_data[0])})
-
-    # Créer une clé unique pour la requête API
-    request_key = f"/station/indicator/{station_id}/{month}/{day}"
-
-    # Vérifier si la réponse API est dans le cache générique
-    cached_response = get_cached_response(request_key)
-    if cached_response:
-        print(f"Données récupérées depuis api_requests pour {request_key}")
-        data = cached_response
-    else:
-        # Faire la requête à l'API en utilisant fetch_weather_data
-        data = fetch_weather_data(station_id, month, day)
-        if data is None:
-            conn.close()
-            return jsonify({"error": "Failed to fetch weather data"}), 500
-        # Stocker la réponse dans le cache générique
-        cache_response(request_key, data)
-
-    # Extraire les extrêmes et calculer la tendance
-    features = data.get("features", [])
-    max_temp = None
-    min_temp = None
-    for feature in features:
-        properties = feature.get("properties", {})
-        element_name = properties.get("ELEMENT_NAME", "")
-        value = properties.get("VALUE", None)
-        if value is not None:
-            if "MAX" in element_name:
-                max_temp = float(value)
-            elif "MIN" in element_name:
-                min_temp = float(value)
-
-    trend = {}
-    if max_temp is not None:
-        trend["max_temperature"] = "progression" if max_temp > HISTORICAL_MAX_TEMP_AVG else "regression"
-    if min_temp is not None:
-        trend["min_temperature"] = "progression" if min_temp > HISTORICAL_MIN_TEMP_AVG else "regression"
-
-    # Stocker dans la table weather_requests
-    request_time = datetime.utcnow().isoformat()
-    c.execute("INSERT OR REPLACE INTO weather_requests (station_id, month, day, request_time, data) VALUES (?, ?, ?, ?, ?)",
-              (station_id, int(month), int(day), request_time, str(data)))
-    conn.commit()
-    conn.close()
-
-    result = {
-        "source": "api",
-        "data": data,
-        "extremes": {
-            "max_temperature": max_temp,
-            "min_temperature": min_temp
-        },
-        "trend": trend
-    }
-    return jsonify(result)
-
-# Nouvel endpoint : GET /map
-@app.route('/', methods=['GET'])
-def show_map():
-    stations = gdf[["station_id", "name", "province", "latitude", "longitude"]].to_dict('records')
+@app.route('/')
+def index():
+    """Affiche la carte avec les stations météo depuis GeoJSON."""
+    stations = load_stations_from_geojson()
     return render_template('map.html', stations=stations)
 
-if __name__ == "__main__":
+@app.route('/stations', methods=['GET'])
+def list_stations():
+    """Retourne une liste paginée de stations depuis GeoJSON."""
+    stations = load_stations_from_geojson()
+    limit = int(request.args.get('limit', PAGINATION_LIMIT))
+    offset = int(request.args.get('offset', 0))
+    paginated_stations = stations[offset:offset + limit]
+    return jsonify(paginated_stations)
+
+@app.route('/station/indicator/<station_id>/<month>/<day>', methods=['GET'])
+def get_weather_indicator(station_id, month, day):
+    """Récupère les données météo avec cache SQLite."""
+    cached_data = get_weather_data(station_id, int(month), int(day))
+    if cached_data:
+        return jsonify({'source': 'cache', 'data': cached_data})
+    data = fetch_weather_data(station_id, month, day)
+    if data:
+        insert_weather_data(station_id, int(month), int(day), str(data))
+        return jsonify({'source': 'api', 'data': data})
+    return jsonify({'error': 'Failed to fetch weather data'}), 500
+
+@app.route('/station/snow/<station_id>', methods=['GET'])
+def get_recent_snow(station_id):
+    """Récupère les données de neige des 5 derniers jours avec cache SQLite."""
+    try:
+        cached_data = get_weather_data(station_id, 0, 0, key=f"{station_id}_snow_recent")
+        if cached_data:
+            return jsonify({'source': 'cache', 'data': cached_data})
+        snow_data = fetch_recent_snow_data(station_id)
+        if snow_data:
+            insert_weather_data(station_id, 0, 0, str(snow_data), key=f"{station_id}_snow_recent")
+            return jsonify({'station_id': station_id, 'snow_data': snow_data})
+        return jsonify({'error': 'Failed to fetch snow data'}), 500
+    except Exception as e:
+        print(f"Erreur dans get_recent_snow pour {station_id} : {type(e).__name__} - {e}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@app.route('/station/temperatures/<station_id>', methods=['GET'])
+def get_recent_temperatures(station_id):
+    """Récupère les températures max/min récentes avec cache SQLite."""
+    cached_data = get_weather_data(station_id, 0, 0, key=f"{station_id}_temp_recent")
+    if cached_data:
+        return jsonify({'source': 'cache', 'data': cached_data})
+    temp_data = fetch_recent_temperatures(station_id)
+    if temp_data:
+        insert_weather_data(station_id, 0, 0, str(temp_data), key=f"{station_id}_temp_recent")
+        return jsonify({'station_id': station_id, 'temp_data': temp_data})
+    return jsonify({'error': 'Failed to fetch temperature data'}), 500
+
+if __name__ == '__main__':
+    print("Lancement du serveur Flask...")
     app.run(host='0.0.0.0', port=5000, debug=True)

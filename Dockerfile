@@ -21,3 +21,4 @@ EXPOSE 5000
 
 # Commande pour lancer l'application
 CMD ["python", "app/app.py"]
+

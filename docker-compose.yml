@@ -1,14 +1,12 @@
-version: '3.8'  # Version de la syntaxe Docker Compose
-
 services:
   weather_app:
     build:
-      context: .  # Utilise le répertoire courant pour le build
-      dockerfile: Dockerfile  # Chemin vers le Dockerfile
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "5000:5000"  # Mappe le port 5000 de l'hôte au port 5000 du conteneur
+      - "5000:5000"
     volumes:
-      - ./data:/app/data  # Monte le dossier data/ local dans /app/data du conteneur
+      - ./data:/app/data
     environment:
-      - FLASK_ENV=development  # (Optionnel) Définit l'environnement Flask
-    restart: unless-stopped  # Redémarre le conteneur sauf s'il est arrêté manuellement
+      - FLASK_ENV=development
+    restart: unless-stopped
