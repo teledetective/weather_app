@@ -5,6 +5,7 @@ from flask import Flask, jsonify, render_template, request
 from database import get_weather_data, init_db, insert_weather_data
 from weather_api import fetch_weather_data, fetch_recent_snow_data, fetch_recent_temperatures
 from config import STATIONS_GEOJSON, PAGINATION_LIMIT
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -92,23 +93,29 @@ def get_recent_snow(station_id):
 
 @app.route('/station/temperatures/<station_id>', methods=['GET'])
 def get_recent_temperatures(station_id):
-    """Récupère les températures max/min pour le 10 janvier avec cache SQLite."""
+    """Récupère les températures max/min pour la date actuelle avec cache SQLite."""
     try:
-        # Vérifier si un rafraîchissement forcé est demandé (par exemple, via un paramètre ?refresh=true)
+        # Obtenir la date actuelle pour la clé de cache
+        today = datetime.now()
+        current_month = today.month
+        current_day = today.day
+        cache_key = f"{station_id}_temp_{today.year}-{current_month:02d}-{current_day:02d}"
+
+        # Vérifier si un rafraîchissement forcé est demandé (par exemple, via ?refresh=true)
         force_refresh = request.args.get('refresh', 'false').lower() == 'true'
         
         # Vérifier le cache si aucun rafraîchissement forcé n'est demandé
         if not force_refresh:
-            cached_data = get_weather_data(station_id, 0, 0, key=f"{station_id}_temp_recent")
+            cached_data = get_weather_data(station_id, 0, 0, key=cache_key)
             if cached_data:
-                print(f"Données de température pour {station_id} récupérées depuis le cache")
+                print(f"Données de température pour {station_id} récupérées depuis le cache (clé: {cache_key})")
                 return jsonify({'source': 'cache', 'data': cached_data})
 
         # Si pas de données en cache ou rafraîchissement forcé, effectuer la requête
         temp_data = fetch_recent_temperatures(station_id)
         if temp_data:
-            insert_weather_data(station_id, 0, 0, temp_data, key=f"{station_id}_temp_recent")
-            print(f"Données de température pour {station_id} mises en cache")
+            insert_weather_data(station_id, 0, 0, temp_data, key=cache_key)
+            print(f"Données de température pour {station_id} mises en cache (clé: {cache_key})")
             return jsonify({'station_id': station_id, 'temp_data': temp_data})
         return jsonify({'error': 'Failed to fetch temperature data'}), 500
     except Exception as e:
