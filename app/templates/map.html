@@ -24,7 +24,7 @@
         // Initialiser la carte
         const map = L.map('map').setView([45.5, -73.5], 5);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
         // Charger les stations
@@ -33,7 +33,7 @@
             const marker = L.marker([station.lat, station.lon]).addTo(map);
             marker.bindPopup(`Station: ${station.id}`);
             marker.on('click', () => {
-                // Mettre à jour les informations de la station
+                // Mettre à jour les informations de la station (sans la ville pour l'instant)
                 document.getElementById('station-info').innerHTML = `
                     Station ${station.id}<br>
                     Coordonnées: Lat ${station.lat}, Lon ${station.lon}
@@ -62,13 +62,35 @@
                     .then(data => {
                         if (data.error) {
                             document.getElementById('temp-data').innerHTML = `Erreur (températures): ${data.error}`;
+                            // Si pas de données de température, afficher "Ville: N/A"
+                            document.getElementById('station-info').innerHTML = `
+                                Station ${station.id}<br>
+                                Ville: N/A<br>
+                                Coordonnées: Lat ${station.lat}, Lon ${station.lon}
+                            `;
                         } else {
-                            const tempInfo = `Températures (${data.temp_data.date})<br>Max: ${data.temp_data.temp_max} °C, Min: ${data.temp_data.temp_min} °C`;
+                            // Mettre à jour les informations de la station avec le nom de la ville
+                            document.getElementById('station-info').innerHTML = `
+                                Station ${station.id}<br>
+                                Ville: ${data.temp_data.city_name}<br>
+                                Coordonnées: Lat ${station.lat}, Lon ${station.lon}
+                            `;
+                            // Afficher les températures sans le nom de la ville
+                            const tempInfo = `
+                                Températures (${data.temp_data.date})<br>
+                                Max: ${data.temp_data.temp_max} °C, Min: ${data.temp_data.temp_min} °C
+                            `;
                             document.getElementById('temp-data').innerHTML = tempInfo;
                         }
                     })
                     .catch(error => {
                         document.getElementById('temp-data').innerHTML = `Erreur (températures): ${error.message}`;
+                        // En cas d'erreur, afficher "Ville: N/A"
+                        document.getElementById('station-info').innerHTML = `
+                            Station ${station.id}<br>
+                            Ville: N/A<br>
+                            Coordonnées: Lat ${station.lat}, Lon ${station.lon}
+                        `;
                     });
             });
         });
