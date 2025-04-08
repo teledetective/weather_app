@@ -45,7 +45,7 @@ def fetch_recent_snow_data(station_id):
                 data = response.json()
                 print(f"Réponse API pour {station_id} le {date.strftime('%Y-%m-%d')}: {data}")
                 if data.get('features'):
-                    snow_value = data['features'][0]['properties'].get('SNOW_ON_GROUND_CM', 'N/A')
+                    snow_value = data['features'][0]['properties'].get('MIN_TEMPERATURE', 'N/A')
                     snow_data.append({
                         'date': date.strftime('%Y-%m-%d'),
                         'snow_cm': snow_value
@@ -87,7 +87,7 @@ def fetch_recent_temperatures(station_id):
                 print(f"Réponse API pour {station_id} le {year}-04-07: {data}")
                 if data.get('features'):
                     properties = data['features'][0]['properties']
-                    temp_max = properties.get('MAX_TEMPERATURE', 'N/A')
+                    temp_max = properties.get('PREV_RECORD_HIGH_MAX_TEMP', 'N/A')
                     temp_min = properties.get('MIN_TEMPERATURE', 'N/A')
                     print(f"Données trouvées pour {station_id} le {year}-04-07: max={temp_max}, min={temp_min}")
                     return {
