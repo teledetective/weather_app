@@ -45,7 +45,7 @@ def fetch_recent_snow_data(station_id):
                 data = response.json()
                 print(f"Réponse API pour {station_id} le {date.strftime('%Y-%m-%d')}: {data}")
                 if data.get('features'):
-                    snow_value = data['features'][0]['properties'].get('MIN_TEMPERATURE', 'N/A')
+                    snow_value = data['features'][0]['properties'].get('SNOW_ON_GROUND_CM', 'N/A')
                     snow_data.append({
                         'date': date.strftime('%Y-%m-%d'),
                         'snow_cm': snow_value
@@ -60,7 +60,7 @@ def fetch_recent_snow_data(station_id):
     return snow_data if snow_data else None
 
 def fetch_recent_temperatures(station_id):
-    """Récupère les températures max/min pour le 7 avril (année la plus récente disponible)."""
+    """Récupère les températures min/max pour le 10 janvier (année la plus récente disponible)."""
     base_url = "https://api.weather.gc.ca/collections/ltce-temperature/items"
     today = datetime.now()
     
@@ -68,11 +68,10 @@ def fetch_recent_temperatures(station_id):
     for year_offset in range(0, 10):
         year = today.year - year_offset
         params = {
-            "LOCAL_MONTH": 4,
-            "LOCAL_DAY": 7,
+            "LOCAL_MONTH": 1,
+            "LOCAL_DAY": 10,
             "VIRTUAL_CLIMATE_ID": station_id,
             "sortby": "VIRTUAL_CLIMATE_ID,LOCAL_MONTH,LOCAL_DAY",
-            "resulttype": "hits",
             "f": "json",
             "limit": 10000,
             "offset": 0,
@@ -80,27 +79,27 @@ def fetch_recent_temperatures(station_id):
         }
         try:
             url = f"{base_url}?" + "&".join(f"{k}={v}" for k, v in params.items())
-            print(f"Requête API pour {station_id} le {year}-04-07: {url}")
+            print(f"Requête API pour {station_id} le {year}-01-10: {url}")
             response = requests.get(url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                print(f"Réponse API pour {station_id} le {year}-04-07: {data}")
+                print(f"Réponse API pour {station_id} le {year}-01-10: {data}")
                 if data.get('features'):
                     properties = data['features'][0]['properties']
-                    temp_max = properties.get('PREV_RECORD_HIGH_MAX_TEMP', 'N/A')
-                    temp_min = properties.get('MIN_TEMPERATURE', 'N/A')
-                    print(f"Données trouvées pour {station_id} le {year}-04-07: max={temp_max}, min={temp_min}")
+                    temp_min = properties.get('FIRST_LOW_MIN_TEMP', 'N/A')
+                    temp_max = properties.get('FIRST_HIGH_MIN_TEMP', 'N/A')
+                    print(f"Données trouvées pour {station_id} le {year}-01-10: max={temp_max}, min={temp_min}")
                     return {
-                        'date': f"{year}-04-07",
+                        'date': f"{year}-01-10",
                         'temp_max': temp_max,
                         'temp_min': temp_min
                     }
                 else:
-                    print(f"Aucune donnée de température pour {station_id} le {year}-04-07")
+                    print(f"Aucune donnée de température pour {station_id} le {year}-01-10")
             else:
-                print(f"Erreur API pour {station_id} le {year}-04-07: Code {response.status_code}")
+                print(f"Erreur API pour {station_id} le {year}-01-10: Code {response.status_code}")
         except requests.exceptions.RequestException as e:
-            print(f"Erreur réseau pour {station_id} le {year}-04-07: {e}")
+            print(f"Erreur réseau pour {station_id} le {year}-01-10: {e}")
             continue
     print(f"Aucune donnée de température trouvée pour {station_id} après 10 ans")
     return None

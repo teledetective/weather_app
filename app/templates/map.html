@@ -1,68 +1,74 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte des stations météo</title>
+    <title>Weather Stations Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        #map { height: 600px; width: 100%; }
+        #map { height: 80vh; width: 100%; }
         #info-panel { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
-    <h1>Carte des stations météo</h1>
     <div id="map"></div>
-    <div id="info-panel"></div>
+    <div id="info-panel">
+        <h3>Station Information</h3>
+        <p id="station-info">Click on a station to see details.</p>
+        <p id="snow-data"></p>
+        <p id="temp-data"></p>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        const map = L.map('map').setView([45.5017, -73.5673], 5);
+        // Initialiser la carte
+        const map = L.map('map').setView([45.5, -73.5], 5);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
+        // Charger les stations
         const stations = {{ stations | tojson }};
         stations.forEach(station => {
             const marker = L.marker([station.lat, station.lon]).addTo(map);
+            marker.bindPopup(`Station: ${station.id}`);
             marker.on('click', () => {
-                let html = `<h3>Station ${station.id}</h3>`;
-                html += `<p>Coordonnées: Lat ${station.lat}, Lon ${station.lon}</p>`;
+                // Mettre à jour les informations de la station
+                document.getElementById('station-info').innerHTML = `
+                    Station ${station.id}<br>
+                    Coordonnées: Lat ${station.lat}, Lon ${station.lon}
+                `;
 
                 // Récupérer les données de neige
                 fetch(`/station/snow/${station.id}`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.error) {
-                            html += `<p>Erreur (neige): ${data.error}</p>`;
+                            document.getElementById('snow-data').innerHTML = `Erreur (neige): ${data.error}`;
                         } else {
-                            html += `<h4>Neige des 5 derniers jours</h4><ul>`;
-                            data.snow_data.forEach(day => {
-                                html += `<li>${day.date}: ${day.snow_cm} cm</li>`;
-                            });
-                            html += `</ul>`;
+                            const snowInfo = data.snow_data.map(day => 
+                                `Neige (${day.date}): ${day.snow_cm} cm`
+                            ).join('<br>');
+                            document.getElementById('snow-data').innerHTML = snowInfo;
                         }
-
-                        // Récupérer les températures
-                        fetch(`/station/temperatures/${station.id}`)
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.error) {
-                                    html += `<p>Erreur (températures): ${data.error}</p>`;
-                                } else {
-                                    html += `<h4>Températures (${data.temp_data.date})</h4>`;
-                                    html += `<p>Max: ${data.temp_data.temp_max} °C, Min: ${data.temp_data.temp_min} °C</p>`;
-                                }
-                                document.getElementById('info-panel').innerHTML = html;
-                            })
-                            .catch(error => {
-                                html += `<p>Erreur (températures): ${error}</p>`;
-                                document.getElementById('info-panel').innerHTML = html;
-                            });
                     })
                     .catch(error => {
-                        html += `<p>Erreur (neige): ${error}</p>`;
-                        document.getElementById('info-panel').innerHTML = html;
+                        document.getElementById('snow-data').innerHTML = `Erreur (neige): ${error.message}`;
+                    });
+
+                // Récupérer les données de température avec rafraîchissement forcé
+                fetch(`/station/temperatures/${station.id}?refresh=true`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            document.getElementById('temp-data').innerHTML = `Erreur (températures): ${data.error}`;
+                        } else {
+                            const tempInfo = `Températures (${data.temp_data.date})<br>Max: ${data.temp_data.temp_max} °C, Min: ${data.temp_data.temp_min} °C`;
+                            document.getElementById('temp-data').innerHTML = tempInfo;
+                        }
+                    })
+                    .catch(error => {
+                        document.getElementById('temp-data').innerHTML = `Erreur (températures): ${error.message}`;
                     });
             });
         });

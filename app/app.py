@@ -92,14 +92,23 @@ def get_recent_snow(station_id):
 
 @app.route('/station/temperatures/<station_id>', methods=['GET'])
 def get_recent_temperatures(station_id):
-    """Récupère les températures max/min récentes avec cache SQLite."""
+    """Récupère les températures max/min pour le 10 janvier avec cache SQLite."""
     try:
-        cached_data = get_weather_data(station_id, 0, 0, key=f"{station_id}_temp_recent")
-        if cached_data:
-            return jsonify({'source': 'cache', 'data': cached_data})
+        # Vérifier si un rafraîchissement forcé est demandé (par exemple, via un paramètre ?refresh=true)
+        force_refresh = request.args.get('refresh', 'false').lower() == 'true'
+        
+        # Vérifier le cache si aucun rafraîchissement forcé n'est demandé
+        if not force_refresh:
+            cached_data = get_weather_data(station_id, 0, 0, key=f"{station_id}_temp_recent")
+            if cached_data:
+                print(f"Données de température pour {station_id} récupérées depuis le cache")
+                return jsonify({'source': 'cache', 'data': cached_data})
+
+        # Si pas de données en cache ou rafraîchissement forcé, effectuer la requête
         temp_data = fetch_recent_temperatures(station_id)
         if temp_data:
             insert_weather_data(station_id, 0, 0, temp_data, key=f"{station_id}_temp_recent")
+            print(f"Données de température pour {station_id} mises en cache")
             return jsonify({'station_id': station_id, 'temp_data': temp_data})
         return jsonify({'error': 'Failed to fetch temperature data'}), 500
     except Exception as e:
