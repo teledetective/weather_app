@@ -90,11 +90,13 @@ def fetch_recent_temperatures(station_id):
                     properties = data['features'][0]['properties']
                     temp_min = properties.get('FIRST_LOW_MIN_TEMP', 'N/A')
                     temp_max = properties.get('FIRST_HIGH_MIN_TEMP', 'N/A')
-                    print(f"Données trouvées pour {station_id} le {year}-{current_month:02d}-{current_day:02d}: max={temp_max}, min={temp_min}")
+                    city_name = properties.get('VIRTUAL_STATION_NAME_F', 'N/A')  # Récupérer le nom de la ville
+                    print(f"Données trouvées pour {station_id} le {year}-{current_month:02d}-{current_day:02d}: max={temp_max}, min={temp_min}, ville={city_name}")
                     return {
                         'date': f"{year}-{current_month:02d}-{current_day:02d}",
                         'temp_max': temp_max,
-                        'temp_min': temp_min
+                        'temp_min': temp_min,
+                        'city_name': city_name  # Ajouter le nom de la ville
                     }
                 else:
                     print(f"Aucune donnée de température pour {station_id} le {year}-{current_month:02d}-{current_day:02d}")
