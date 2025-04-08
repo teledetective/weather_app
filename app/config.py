@@ -26,6 +26,9 @@ DEFAULT_API_HEADERS = {
 # File paths
 STATIONS_GEOJSON_PATH = "data/stations.geojson"
 
+# Chemin vers la base de données SQLite
+DATABASE_PATH = "data/weather_data.db"
+
 # Historical averages for trend analysis (simplified for demo purposes)
 HISTORICAL_MAX_TEMP_AVG = 20.0
 HISTORICAL_MIN_TEMP_AVG = 10.0

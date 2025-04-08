@@ -1,41 +1,38 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Weather Stations Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte des stations météo</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         #map { height: 600px; width: 100%; }
-        #info-panel { margin-top: 10px; }
+        #info-panel { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
-    <h1>Weather Stations Map</h1>
+    <h1>Carte des stations météo</h1>
     <div id="map"></div>
     <div id="info-panel"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        var map = L.map('map').setView([56.13, -106.35], 4);
+        const map = L.map('map').setView([45.5017, -73.5673], 5);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        var stations = {{ stations | tojson }};
-        stations.forEach(function(station) {
-            var lat = station.lat;
-            var lon = station.lon;
-            var stationId = station.id;
+        const stations = {{ stations | tojson }};
+        stations.forEach(station => {
+            const marker = L.marker([station.lat, station.lon]).addTo(map);
+            marker.on('click', () => {
+                let html = `<h3>Station ${station.id}</h3>`;
+                html += `<p>Coordonnées: Lat ${station.lat}, Lon ${station.lon}</p>`;
 
-            var marker = L.marker([lat, lon]).addTo(map);
-            marker.bindPopup(`<b>Station ID: ${stationId}</b><br>Lat: ${lat}<br>Lon: ${lon}`);
-
-            marker.on('click', function() {
-                // Charger les données de neige
-                fetch(`/station/snow/${stationId}`)
+                // Récupérer les données de neige
+                fetch(`/station/snow/${station.id}`)
                     .then(response => response.json())
                     .then(data => {
-                        let html = `<h3>Station ${stationId}</h3>`;
                         if (data.error) {
                             html += `<p>Erreur (neige): ${data.error}</p>`;
                         } else {
@@ -45,25 +42,27 @@
                             });
                             html += `</ul>`;
                         }
-                        // Charger les données de température
-                        fetch(`/station/temperatures/${stationId}`)
+
+                        // Récupérer les températures
+                        fetch(`/station/temperatures/${station.id}`)
                             .then(response => response.json())
-                            .then(tempData => {
-                                if (tempData.error) {
-                                    html += `<p>Erreur (températures): ${tempData.error}</p>`;
+                            .then(data => {
+                                if (data.error) {
+                                    html += `<p>Erreur (températures): ${data.error}</p>`;
                                 } else {
-                                    html += `<h4>Températures récentes (${tempData.temp_data.date})</h4>`;
-                                    html += `<p>Max: ${tempData.temp_data.temp_max} °C</p>`;
-                                    html += `<p>Min: ${tempData.temp_data.temp_min} °C</p>`;
+                                    html += `<h4>Températures (${data.temp_data.date})</h4>`;
+                                    html += `<p>Max: ${data.temp_data.temp_max} °C, Min: ${data.temp_data.temp_min} °C</p>`;
                                 }
                                 document.getElementById('info-panel').innerHTML = html;
                             })
                             .catch(error => {
-                                document.getElementById('info-panel').innerHTML += `<p>Erreur (températures): ${error}</p>`;
+                                html += `<p>Erreur (températures): ${error}</p>`;
+                                document.getElementById('info-panel').innerHTML = html;
                             });
                     })
                     .catch(error => {
-                        document.getElementById('info-panel').innerHTML = `<p>Erreur (neige): ${error}</p>`;
+                        html += `<p>Erreur (neige): ${error}</p>`;
+                        document.getElementById('info-panel').innerHTML = html;
                     });
             });
         });
