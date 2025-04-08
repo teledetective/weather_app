@@ -39,16 +39,14 @@
                     Coordonnées: Lat ${station.lat}, Lon ${station.lon}
                 `;
 
-                // Récupérer les données de neige
-                fetch(`/station/snow/${station.id}`)
+                // Récupérer les données de neige avec rafraîchissement forcé
+                fetch(`/station/snow/${station.id}?refresh=true`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.error) {
                             document.getElementById('snow-data').innerHTML = `Erreur (neige): ${data.error}`;
                         } else {
-                            const snowInfo = data.snow_data.map(day => 
-                                `Neige (${day.date}): ${day.snow_cm} cm`
-                            ).join('<br>');
+                            const snowInfo = `Précipitation de neige record (${data.snow_data.date}): ${data.snow_data.snowfall} cm`;
                             document.getElementById('snow-data').innerHTML = snowInfo;
                         }
                     })
@@ -75,7 +73,7 @@
                                 Ville: ${data.temp_data.city_name}<br>
                                 Coordonnées: Lat ${station.lat}, Lon ${station.lon}
                             `;
-                            // Afficher les températures sans le nom de la ville
+                            // Afficher les températures
                             const tempInfo = `
                                 Températures (${data.temp_data.date})<br>
                                 Max: ${data.temp_data.temp_max} °C, Min: ${data.temp_data.temp_min} °C

@@ -22,42 +22,49 @@ def fetch_weather_data(station_id, month, day):
     return response.json() if response.status_code == 200 else None
 
 def fetch_recent_snow_data(station_id):
-    """Récupère les données de neige des 5 derniers jours pour une station."""
-    base_url = "https://api.weather.gc.ca/collections/climate-daily/items"
+    """Récupère la précipitation de neige record pour la date actuelle (année la plus récente disponible)."""
+    base_url = "https://api.weather.gc.ca/collections/ltce-snowfall/items"
     today = datetime.now()
-    snow_data = []
-
-    for i in range(5):
-        date = today - timedelta(days=i)
+    current_month = today.month  # Par exemple, 4 pour avril
+    current_day = today.day      # Par exemple, 8 pour le 8 avril
+    
+    # Commencer par l'année actuelle et remonter jusqu'à 10 ans en arrière
+    for year_offset in range(0, 10):
+        year = today.year - year_offset
         params = {
-            "LOCAL_YEAR": date.year,
-            "LOCAL_MONTH": date.month,
-            "LOCAL_DAY": date.day,
+            "LOCAL_MONTH": current_month,
+            "LOCAL_DAY": current_day,
             "VIRTUAL_CLIMATE_ID": station_id,
+            "sortby": "VIRTUAL_CLIMATE_ID,LOCAL_MONTH,LOCAL_DAY",
             "f": "json",
-            "limit": 1
+            "limit": 10000,
+            "offset": 0,
+            "LOCAL_YEAR": year
         }
         try:
             url = f"{base_url}?" + "&".join(f"{k}={v}" for k, v in params.items())
-            print(f"Requête API pour {station_id} le {date.strftime('%Y-%m-%d')}: {url}")
+            print(f"Requête API pour {station_id} le {year}-{current_month:02d}-{current_day:02d}: {url}")
             response = requests.get(url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                print(f"Réponse API pour {station_id} le {date.strftime('%Y-%m-%d')}: {data}")
+                print(f"Réponse API pour {station_id} le {year}-{current_month:02d}-{current_day:02d}: {data}")
                 if data.get('features'):
-                    snow_value = data['features'][0]['properties'].get('SNOW_ON_GROUND_CM', 'N/A')
-                    snow_data.append({
-                        'date': date.strftime('%Y-%m-%d'),
-                        'snow_cm': snow_value
-                    })
+                    properties = data['features'][0]['properties']
+                    snowfall = properties.get('RECORD_SNOWFALL', 'N/A')
+                    print(f"Données de neige trouvées pour {station_id} le {year}-{current_month:02d}-{current_day:02d}: snowfall={snowfall}")
+                    return {
+                        'date': f"{year}-{current_month:02d}-{current_day:02d}",
+                        'snowfall': snowfall
+                    }
                 else:
-                    print(f"Aucune donnée de neige pour {station_id} le {date.strftime('%Y-%m-%d')}")
+                    print(f"Aucune donnée de neige pour {station_id} le {year}-{current_month:02d}-{current_day:02d}")
             else:
-                print(f"Erreur API pour {station_id} le {date.strftime('%Y-%m-%d')}: Code {response.status_code}")
+                print(f"Erreur API pour {station_id} le {year}-{current_month:02d}-{current_day:02d}: Code {response.status_code}")
         except requests.exceptions.RequestException as e:
-            print(f"Erreur réseau pour {station_id} le {date.strftime('%Y-%m-%d')}: {e}")
+            print(f"Erreur réseau pour {station_id} le {year}-{current_month:02d}-{current_day:02d}: {e}")
             continue
-    return snow_data if snow_data else None
+    print(f"Aucune donnée de neige trouvée pour {station_id} après 10 ans")
+    return None
 
 def fetch_recent_temperatures(station_id):
     """Récupère les températures min/max pour la date actuelle (année la plus récente disponible)."""
@@ -96,7 +103,7 @@ def fetch_recent_temperatures(station_id):
                         'date': f"{year}-{current_month:02d}-{current_day:02d}",
                         'temp_max': temp_max,
                         'temp_min': temp_min,
-                        'city_name': city_name  # Ajouter le nom de la ville
+                        'city_name': city_name
                     }
                 else:
                     print(f"Aucune donnée de température pour {station_id} le {year}-{current_month:02d}-{current_day:02d}")

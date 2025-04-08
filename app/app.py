@@ -77,14 +77,29 @@ def get_weather_indicator(station_id, month, day):
 
 @app.route('/station/snow/<station_id>', methods=['GET'])
 def get_recent_snow(station_id):
-    """Récupère les données de neige des 5 derniers jours avec cache SQLite."""
+    """Récupère la précipitation de neige record pour la date actuelle avec cache SQLite."""
     try:
-        cached_data = get_weather_data(station_id, 0, 0, key=f"{station_id}_snow_recent")
-        if cached_data:
-            return jsonify({'source': 'cache', 'data': cached_data})
+        # Obtenir la date actuelle pour la clé de cache
+        today = datetime.now()
+        current_month = today.month
+        current_day = today.day
+        cache_key = f"{station_id}_snow_{today.year}-{current_month:02d}-{current_day:02d}"
+
+        # Vérifier si un rafraîchissement forcé est demandé (par exemple, via ?refresh=true)
+        force_refresh = request.args.get('refresh', 'false').lower() == 'true'
+        
+        # Vérifier le cache si aucun rafraîchissement forcé n'est demandé
+        if not force_refresh:
+            cached_data = get_weather_data(station_id, 0, 0, key=cache_key)
+            if cached_data:
+                print(f"Données de neige pour {station_id} récupérées depuis le cache (clé: {cache_key})")
+                return jsonify({'source': 'cache', 'data': cached_data})
+
+        # Si pas de données en cache ou rafraîchissement forcé, effectuer la requête
         snow_data = fetch_recent_snow_data(station_id)
         if snow_data:
-            insert_weather_data(station_id, 0, 0, snow_data, key=f"{station_id}_snow_recent")
+            insert_weather_data(station_id, 0, 0, snow_data, key=cache_key)
+            print(f"Données de neige pour {station_id} mises en cache (clé: {cache_key})")
             return jsonify({'station_id': station_id, 'snow_data': snow_data})
         return jsonify({'error': 'Failed to fetch snow data'}), 500
     except Exception as e:
