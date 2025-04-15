@@ -1,60 +1,112 @@
-# Weather Stations API
+Weather Stations API
+Une API REST Flask pour explorer les données météorologiques des stations canadiennes, avec une carte interactive. Elle utilise l’API d’Environnement Canada (https://api.weather.gc.ca), stocke les stations dans un fichier GeoJSON, met en cache les données dans SQLite, et affiche les stations via Leaflet.
+Fonctionnalités
 
-Ce projet est une API REST développée avec Flask pour gérer des données de stations météorologiques au Canada. Elle récupère des données géospatiales depuis l'API `https://api.weather.gc.ca`, les stocke dans un fichier GeoJSON, et les charge dans un GeoDataFrame avec `geopandas`. L’application permet de lister les stations, d’afficher leurs positions sur une carte interactive avec Leaflet, et de récupérer des données météorologiques spécifiques, telles que les températures extrêmes pour une station donnée. Les données sont mises en cache dans une base de données SQLite pour optimiser les performances.
+Chargement des stations :
 
-## Fonctionnalités
+Les stations sont lues depuis data/stations.geojson (identifiants, coordonnées).
+Traitement via geopandas pour une gestion géospatiale efficace.
 
-- **Chargement des données géospatiales** :
-  - Les stations sont définies dans un fichier statique `data/stations.geojson`, qui contient leurs identifiants, noms, coordonnées et autres métadonnées.
-  - Les données sont chargées dans un GeoDataFrame avec `geopandas` pour un traitement géospatial efficace.
 
-- **API REST avec Flask** :
-  - `GET /stations` : Retourne une liste paginée de toutes les stations météorologiques définies dans `stations.geojson`.
-  - `GET /station/indicator/<id_station>/<month>/<day>` : Récupère les données météorologiques pour une station, un mois et un jour spécifiques via l’API `https://api.weather.gc.ca/collections/ltce-temperature/items`.
-  - `GET /station/snow/<id_station>` : Récupère les données de neige des 5 derniers jours pour une station donnée via l’API `https://api.weather.gc.ca/collections/climate-daily/items`.
-  - `GET /station/temperatures/<id_station>` : Récupère les températures extrêmes (minimale et maximale) pour une station spécifique pour le 10 janvier, en utilisant la requête suivante :  
-    `https://api.weather.gc.ca/collections/ltce-temperature/items?LOCAL_MONTH=01&LOCAL_DAY=10&VIRTUAL_CLIMATE_ID=<station_id>&sortby=VIRTUAL_CLIMATE_ID,LOCAL_MONTH,LOCAL_DAY&f=json&limit=10000&offset=0`.  
-    Les champs extraits sont `FIRST_LOW_MIN_TEMP` (température minimale) et `FIRST_HIGH_MIN_TEMP` (température maximale).
-  - `GET /` : Affiche une carte interactive avec Leaflet où les stations sont représentées sous forme de marqueurs. En cliquant sur une station, les données de neige et de température sont affichées dans un panneau d’information en bas de la page.
+API REST :
 
-- **Mise en cache des données** :
-  - Les résultats des requêtes aux endpoints `/station/snow/<id_station>` et `/station/temperatures/<id_station>` sont stockés dans une base de données SQLite (`data/weather_data.db`) pour éviter de refaire des appels API inutiles.
-  - À chaque clic sur une station dans la carte, l’application vérifie d’abord si les données sont disponibles dans le cache. Si elles ne le sont pas ou si un rafraîchissement est forcé (via le paramètre `?refresh=true`), une nouvelle requête est effectuée et le résultat est mis à jour dans la base de données.
+GET / : Carte Leaflet avec marqueurs cliquables pour afficher neige et températures.
+GET /stations?limit=X&offset=Y : Liste paginée des stations.
+GET /station/indicator/<station_id>/<month>/<day> : Données météo pour une date donnée.
+GET /station/snow/<station_id> : Neige record pour la date actuelle (jusqu’à 10 ans en arrière).
+GET /station/temperatures/<station_id> : Températures max/min et nom de la ville pour la date actuelle (jusqu’à 10 ans).
 
-- **Carte interactive** :
-  - Une carte Leaflet est utilisée pour afficher les stations sous forme de points. Lorsqu’un utilisateur clique sur un marqueur, les données de neige et de température sont récupérées et affichées dynamiquement dans un panneau d’information.
 
-## Concepts clés
+Carte interactive :
 
-### Mise en cache
-La mise en cache est utilisée pour améliorer les performances de l’application en réduisant le nombre de requêtes envoyées à l’API externe `https://api.weather.gc.ca`. Voici comment elle fonctionne :
-- **Stockage dans SQLite** : Les réponses des requêtes API sont stockées dans une base de données SQLite (`weather_data.db`) sous forme de texte JSON. Chaque entrée est associée à une clé unique (par exemple, `VSQC136_temp_recent` pour les températures d’une station).
-- **Vérification du cache** : Avant d’effectuer une requête API, l’application vérifie si les données sont déjà présentes dans la base de données pour la station demandée.
-- **Rafraîchissement forcé** : Lorsqu’un utilisateur clique sur une station dans la carte, la requête pour les températures inclut le paramètre `?refresh=true`, ce qui force une nouvelle requête API et met à jour le cache, même si des données existent déjà. Cela garantit que les informations affichées sont toujours les plus récentes disponibles.
+Marqueurs Leaflet pour chaque station.
+Clic : affiche les données météo dans un panneau (neige, températures, ville).
 
-### Base de données SQLite
-La base de données SQLite (`weather_data.db`) est utilisée pour persister les données météorologiques :
-- **Structure** : La table `weather_data` contient les colonnes suivantes :
-  - `station_id` : Identifiant de la station (par exemple, `VSQC136`).
-  - `month` et `day` : Mois et jour associés à la requête (utilisés pour `/station/indicator`, définis à `0` pour les endpoints `/snow` et `/temperatures`).
-  - `data` : Données météorologiques sous forme de texte JSON.
-  - `cache_key` : Clé unique pour identifier chaque entrée (par exemple, `VSQC136_temp_recent`).
-- **Insertion et récupération** : Les données sont insérées avec `json.dumps()` pour garantir un format JSON valide et récupérées avec `json.loads()` pour être utilisées dans l’application.
 
-## Prérequis
+Cache :
 
-- Python 3.9 ou supérieur
-- Docker (pour exécuter l’application dans un conteneur)
-- Les bibliothèques Python suivantes (listées dans `requirements.txt`) :
-  - `flask`
-  - `geopandas`
-  - `requests`
-  - `shapely`
-  - `pandas`
+Données de /snow et /temperatures stockées dans data/weather_data.db.
+Vérification du cache avant chaque requête API.
+Rafraîchissement forcé avec ?refresh=true sur la carte.
 
-## Installation
 
-1. **Cloner le dépôt** :
-   ```bash
-   git clone https://github.com/teledetective/weather_app.git
-   cd weather_app
+
+Concepts clés
+Cache
+
+Stockage : Réponses API en JSON dans SQLite, avec clés uniques (ex. VSQC136_snow_2025-04-15).
+Logique : Vérifie le cache avant l’API ; ?refresh=true force une mise à jour.
+But : Réduire les appels API pour plus de rapidité.
+
+Base SQLite
+
+Table weather_data :
+station_id : ID station (ex. VSQC136).
+month, day : Mois/jour (0 pour /snow, /temperatures).
+data : Données JSON.
+cache_key : Clé unique.
+
+
+Gestion : Insertion via json.dumps(), lecture via json.loads().
+
+Prérequis
+
+Python 3.9+
+Bibliothèques (requirements.txt) :
+flask
+geopandas
+requests
+shapely
+pandas
+
+
+Fichier data/stations.geojson
+(Optionnel) Docker
+
+Installation
+
+Cloner le dépôt :
+git clone https://github.com/teledetective/weather_app.git
+cd weather_app
+
+
+Créer un environnement virtuel :
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+.\venv\Scripts\activate   # Windows
+
+
+Installer les dépendances :
+pip install -r requirements.txt
+
+
+Vérifier stations.geojson :
+
+Placez un fichier valide dans data/ avec station_id, latitude, longitude.
+
+
+Lancer l’application :
+python app.py
+
+
+Accédez à http://localhost:5000.
+
+
+
+Utilisation
+
+Carte : Cliquez sur un marqueur pour voir les données (neige, températures, ville).
+API :
+Stations : curl http://localhost:5000/stations?limit=10&offset=0
+Neige : curl http://localhost:5000/station/snow/VSQC136
+Températures : curl http://localhost:5000/station/temperatures/VSQC136
+
+
+
+Notes
+
+Les endpoints /snow et /temperatures explorent 10 ans pour trouver des données.
+Assurez-vous que stations.geojson est à jour.
+SQLite se crée automatiquement.
+Le cache améliore les performances, mais ?refresh=true garantit des données récentes.
+

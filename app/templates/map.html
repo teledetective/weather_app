@@ -1,17 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- Encodage et configuration de la page -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weather Stations Map</title>
+    <!-- Importation de la feuille de style Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
+        /* Style pour la carte */
         #map { height: 80vh; width: 100%; }
+        /* Style pour le panneau d'info */
         #info-panel { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
+    <!-- Conteneur pour la carte -->
     <div id="map"></div>
+    <!-- Panneau pour afficher les infos des stations -->
     <div id="info-panel">
         <h3>Station Information</h3>
         <p id="station-info">Click on a station to see details.</p>
@@ -19,61 +25,70 @@
         <p id="temp-data"></p>
     </div>
 
+    <!-- Importation de la bibliothèque Leaflet -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Initialiser la carte
+        // On initialise la carte, centrée sur [45.5, -73.5] avec zoom 5
         const map = L.map('map').setView([45.5, -73.5], 5);
+        // On ajoute une couche OpenStreetMap
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Charger les stations
+        // On récupère les stations passées depuis le serveur
         const stations = {{ stations | tojson }};
+        // Pour chaque station, on crée un marqueur
         stations.forEach(station => {
+            // On place un marqueur aux coordonnées de la station
             const marker = L.marker([station.lat, station.lon]).addTo(map);
+            // On ajoute une popup avec l'ID
             marker.bindPopup(`Station: ${station.id}`);
+            // Quand on clique sur le marqueur
             marker.on('click', () => {
-                // Mettre à jour les informations de la station (sans la ville pour l'instant)
+                // On met à jour le panneau d'info
                 document.getElementById('station-info').innerHTML = `
                     Station ${station.id}<br>
                     Coordonnées: Lat ${station.lat}, Lon ${station.lon}
                 `;
 
-                // Récupérer les données de neige avec rafraîchissement forcé
+                // On va chercher les données de neige
                 fetch(`/station/snow/${station.id}?refresh=true`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.error) {
+                            // Si erreur, on affiche le message
                             document.getElementById('snow-data').innerHTML = `Erreur (neige): ${data.error}`;
                         } else {
+                            // Sinon, on affiche la neige
                             const snowInfo = `Précipitation de neige record (${data.snow_data.date}): ${data.snow_data.snowfall} cm`;
                             document.getElementById('snow-data').innerHTML = snowInfo;
                         }
                     })
                     .catch(error => {
+                        // En cas d'erreur réseau
                         document.getElementById('snow-data').innerHTML = `Erreur (neige): ${error.message}`;
                     });
 
-                // Récupérer les données de température avec rafraîchissement forcé
+                // On va chercher les températures
                 fetch(`/station/temperatures/${station.id}?refresh=true`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.error) {
+                            // Si erreur, on affiche N/A pour la ville
                             document.getElementById('temp-data').innerHTML = `Erreur (températures): ${data.error}`;
-                            // Si pas de données de température, afficher "Ville: N/A"
                             document.getElementById('station-info').innerHTML = `
                                 Station ${station.id}<br>
                                 Ville: N/A<br>
                                 Coordonnées: Lat ${station.lat}, Lon ${station.lon}
                             `;
                         } else {
-                            // Mettre à jour les informations de la station avec le nom de la ville
+                            // On met à jour avec le nom de la ville
                             document.getElementById('station-info').innerHTML = `
                                 Station ${station.id}<br>
                                 Ville: ${data.temp_data.city_name}<br>
                                 Coordonnées: Lat ${station.lat}, Lon ${station.lon}
                             `;
-                            // Afficher les températures
+                            // On affiche les températures
                             const tempInfo = `
                                 Températures (${data.temp_data.date})<br>
                                 Max: ${data.temp_data.temp_max} °C, Min: ${data.temp_data.temp_min} °C
@@ -82,8 +97,8 @@
                         }
                     })
                     .catch(error => {
+                        // En cas d'erreur, ville N/A
                         document.getElementById('temp-data').innerHTML = `Erreur (températures): ${error.message}`;
-                        // En cas d'erreur, afficher "Ville: N/A"
                         document.getElementById('station-info').innerHTML = `
                             Station ${station.id}<br>
                             Ville: N/A<br>
@@ -93,5 +108,6 @@
             });
         });
     </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'930c7656e96ddd1a',t:'MTc0NDczMDc5Ni4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </body>
 </html>
