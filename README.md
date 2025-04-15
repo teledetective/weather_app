@@ -1,102 +1,79 @@
-# Weather Stations API
+WEATHER STATIONS API
+---------------------
 
-# Description
-# Une API REST Flask pour explorer les données météorologiques des stations canadiennes.
-# Elle utilise l’API d’Environnement Canada (https://api.weather.gc.ca),
-# stocke les stations dans un fichier GeoJSON, met en cache les données dans SQLite,
-# et affiche les stations via une carte interactive (Leaflet).
+DESCRIPTION
+-----------
+Une API REST Flask pour explorer les données météorologiques des stations canadiennes.
 
-# Fonctionnalités
+Elle utilise l’API d’Environnement Canada (https://api.weather.gc.ca),
+stocke les stations dans un fichier GeoJSON, met en cache les données dans SQLite,
+et les affiche sur une carte interactive avec Leaflet.
 
-# Chargement des stations
-# - Lecture depuis data/stations.geojson (coordonnées, ID des stations)
-# - Traitement via GeoPandas pour une gestion géospatiale simple
+FONCTIONNALITÉS
+----------------
+Chargement des stations :
+- Lecture depuis data/stations.geojson (coordonnées, ID des stations)
+- Traitement avec GeoPandas pour la manipulation géospatiale
 
-# API REST
-# - GET / : Affiche la carte avec les stations
-# - GET /stations?limit=X&offset=Y : Liste paginée des stations
-# - GET /station/indicator/<station_id>/<month>/<day> : Données météo pour une date précise
-# - GET /station/snow/<station_id> : Neige record pour la date actuelle (sur 10 ans)
-# - GET /station/temperatures/<station_id> : Températures max/min et nom de la ville (10 ans max)
+API REST :
+- GET / : Affiche la carte interactive
+- GET /stations?limit=X&offset=Y : Liste paginée des stations
+- GET /station/indicator/<station_id>/<month>/<day> : Données météo spécifiques
+- GET /station/snow/<station_id> : Neige record (historique de 10 ans)
+- GET /station/temperatures/<station_id> : Températures max/min historiques
 
-# Carte interactive
-# - Affiche les stations météo avec Leaflet
-# - Clic sur une station = affiche neige + températures + nom de la ville
+Carte interactive :
+- Clic sur une station → neige record, températures, nom de la ville
 
-# Cache
-# - Données de /snow et /temperatures enregistrées dans data/weather_data.db
-# - Utilise un cache SQLite pour éviter les appels répétitifs à l'API
-# - ?refresh=true permet de forcer une mise à jour
+Cache :
+- Données météo stockées dans une base SQLite (data/weather_data.db)
+- Clés de cache : station + type + date
+- Utilisation de ?refresh=true pour forcer la mise à jour
 
-# Concepts clés
+BASE DE DONNÉES SQLITE
+-----------------------
+- Table : weather_data
+- Colonnes : station_id, month, day, data (JSON), cache_key (unique)
+- json.dumps() pour stocker, json.loads() pour lire
 
-# Cache
-# - Données JSON stockées dans SQLite avec des clés uniques (ex : VSQC136_snow_2025-04-15)
-# - Vérifie d'abord le cache, puis interroge l’API si besoin
-# - Améliore les performances et réduit la charge réseau
+PRÉREQUIS
+---------
+- Python ≥ 3.9
+- Bibliothèques nécessaires :
+  - flask
+  - geopandas
+  - requests
+  - shapely
+  - pandas
 
-# Base SQLite
-# - Table weather_data avec les colonnes :
-#   - station_id
-#   - month
-#   - day
-#   - data (JSON)
-#   - cache_key (clé unique)
-# - Insertion via json.dumps(), lecture via json.loads()
+INSTALLATION
+------------
+1. Cloner le dépôt :
+   git clone https://github.com/teledetective/weather_app.git
+   cd weather_app
 
-# Prérequis
+2. Créer un environnement virtuel :
+   python -m venv venv
+   source venv/bin/activate  (ou .\venv\Scripts\activate sous Windows)
 
-# - Python 3.9 ou supérieur
-# - Bibliothèques à installer via requirements.txt :
-#   flask
-#   geopandas
-#   requests
-#   shapely
-#   pandas
+3. Installer les dépendances :
+   pip install -r requirements.txt
 
-# - Fichier requis : data/stations.geojson avec les champs :
-#   station_id, latitude, longitude
+4. Lancer l’app :
+   python app.py
 
-# Installation
+UTILISATION
+-----------
+Accès via navigateur :
+- http://localhost:5000
 
-# Cloner le dépôt
-git clone https://github.com/teledetective/weather_app.git
-cd weather_app
+Appels API :
+- /stations?limit=10
+- /station/snow/VSQC136
+- /station/temperatures/VSQC136
 
-# Créer un environnement virtuel
-python -m venv venv
-source venv/bin/activate  # Linux / Mac
-.\venv\Scripts\activate   # Windows
-
-# Installer les dépendances
-pip install -r requirements.txt
-
-# Vérifier le fichier stations.geojson
-# Il doit être placé dans le dossier data/ avec les bons attributs
-
-# Lancer l’application Flask
-python app.py
-
-# Accès via le navigateur
-# http://localhost:5000
-
-# Utilisation
-
-# Sur la carte :
-# - Cliquez sur un marqueur pour voir :
-#   - les données de neige record
-#   - les températures max/min
-#   - le nom de la ville
-
-# Appels API directs :
-# - curl http://localhost:5000/stations?limit=10&offset=0
-# - curl http://localhost:5000/station/snow/VSQC136
-# - curl http://localhost:5000/station/temperatures/VSQC136
-
-# Notes
-
-# - Les endpoints /snow et /temperatures explorent jusqu’à 10 ans en arrière
-# - Assurez-vous que stations.geojson est bien structuré
-# - La base SQLite est générée automatiquement
-# - Le cache permet d’améliorer la rapidité d’affichage
-# - Ajouter ?refresh=true dans l’URL permet de forcer une mise à jour
+NOTES
+-----
+- Les données sont extraites depuis l’API d’Environnement Canada
+- Le cache SQLite évite les appels répétitifs
+- Le fichier stations.geojson doit être structuré correctement
